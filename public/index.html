@@ -87,6 +87,16 @@
   table { border-collapse: collapse; width: 100%; font-size: .9rem; }
   th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
   code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; }
+  .embed { margin-top: 16px; }
+  .embed-row { margin-top: 10px; }
+  .embed-row .label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .embed-row input {
+    width: 100%; margin-top: 4px; padding: 6px 8px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--code-bg); color: var(--text);
+    font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  button.small { padding: 3px 10px; font-size: .8rem; }
+  .warn { color: var(--error-text); }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -122,7 +132,7 @@
       </div>
       <p class="hint">Ctrl / ⌘ + Enter でも変換できます。<code>\documentclass</code> を含まない入力は
         <code>standalone</code> クラス（amsmath, amssymb, mathtools, bm, xcolor 読み込み済み）で包みます。数式は
-        <code>$…$</code> や <code>\[…\]</code> で囲んでください。</p>
+        <code>$…$</code> や <code>\[…\]</code> で囲んでください。日本語を含む場合は自動で upLaTeX を使います。</p>
     </div>
 
     <div class="panel">
@@ -138,9 +148,30 @@
     </div>
   </div>
 
+  <section class="panel embed" id="embed" hidden>
+    <h2 style="font-size:1.1rem;margin:0">埋め込み</h2>
+    <p class="hint" style="margin-top:4px">GET で取得できる URL です。TeX ソースは圧縮して URL に含めているので、サーバー側に保存はしません。</p>
+    <p class="hint warn" id="embedNone" hidden>ソースが長すぎるため埋め込み URL を発行できません（上限 8KB）。</p>
+    <div id="embedRows">
+      <div class="embed-row">
+        <div class="label"><label for="embedUrl">URL <span class="meta" id="embedLen"></span></label><button class="secondary small" type="button" data-copy="embedUrl">コピー</button></div>
+        <input id="embedUrl" readonly>
+      </div>
+      <div class="embed-row">
+        <div class="label"><label for="embedMd">Markdown</label><button class="secondary small" type="button" data-copy="embedMd">コピー</button></div>
+        <input id="embedMd" readonly>
+      </div>
+      <div class="embed-row">
+        <div class="label"><label for="embedHtml">HTML</label><button class="secondary small" type="button" data-copy="embedHtml">コピー</button></div>
+        <input id="embedHtml" readonly>
+      </div>
+    </div>
+  </section>
+
   <section class="panel api">
     <h2>REST API</h2>
-    <p>TeX ソースをリクエストボディに入れて <code>QUERY</code> メソッドで送信します（<code>POST</code> でも可）。</p>
+    <p>TeX ソースをリクエストボディに入れて <code>QUERY</code> メソッドで送信します（<code>POST</code> でも可）。
+      レスポンスの <code>Content-Location</code> ヘッダに、同じ画像を <code>GET</code> で取得できる埋め込み用 URL が入ります。</p>
     <pre class="code" id="curl"></pre>
     <div class="actions"><button class="secondary" id="copyCurl" type="button">コマンドをコピー</button></div>
     <table style="margin-top:12px">
@@ -162,6 +193,8 @@
     render: $('render'), preview: $('preview'), actions: $('actions'), download: $('download'),
     copy: $('copy'), meta: $('meta'), error: $('error'), logBox: $('logBox'), log: $('log'),
     curl: $('curl'), copyCurl: $('copyCurl'),
+    embed: $('embed'), embedNone: $('embedNone'), embedRows: $('embedRows'), embedLen: $('embedLen'),
+    embedUrl: $('embedUrl'), embedMd: $('embedMd'), embedHtml: $('embedHtml'),
   };
   const STORAGE_KEY = 'tex2img:v1';
   let objectUrl = null;
@@ -204,6 +237,24 @@
       `  -H 'Content-Type: text/plain; charset=utf-8' \\\n` +
       `  --data-binary ${shellQuote(els.tex.value)} \\\n` +
       `  -o tex.${els.format.value}`;
+  }
+
+  function htmlAttr(s) {
+    return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  }
+
+  function showEmbed(location, tex) {
+    els.embed.hidden = false;
+    els.embedNone.hidden = !!location;
+    els.embedRows.hidden = !location;
+    if (!location) return;
+    const url = new URL(location, window.location.href).href;
+    // alt には TeX ソース（1 行に詰めて先頭 200 文字）を入れる
+    const alt = tex.replace(/\s+/g, ' ').trim().slice(0, 200);
+    els.embedUrl.value = url;
+    els.embedMd.value = `![${alt.replace(/[\\\[\]]/g, '\\$&')}](${url})`;
+    els.embedHtml.value = `<img src="${htmlAttr(url)}" alt="${htmlAttr(alt)}">`;
+    els.embedLen.textContent = `（${url.length.toLocaleString()} 文字）`;
   }
 
   function showError(message, log) {
@@ -259,6 +310,7 @@
       els.meta.textContent =
         `${fmt.toUpperCase()}・${img.naturalWidth}×${img.naturalHeight}・${(blob.size / 1024).toFixed(1)} KB・${ms} ms${cache}`;
       els.actions.hidden = false;
+      showEmbed(res.headers.get('Content-Location'), tex);
     } catch (e) {
       if (e.name !== 'AbortError') showError('通信エラー: ' + e.message);
     } finally {
@@ -318,6 +370,11 @@
   });
   els.copy.addEventListener('click', copyImage);
   els.copyCurl.addEventListener('click', () => copyText(els.curl.textContent, els.copyCurl));
+  for (const button of document.querySelectorAll('[data-copy]')) {
+    const input = $(button.dataset.copy);
+    input.addEventListener('focus', () => input.select());
+    button.addEventListener('click', () => copyText(input.value, button));
+  }
 })();
 </script>
 </body>

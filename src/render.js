@@ -24,10 +24,12 @@ export const LIMITS = Object.freeze({
   maxPixels: env('MAX_PIXELS', 25_000_000),
 });
 
-// librsvg は pt を 96dpi で px に変換する。scale=1 のとき
-// ブラウザで SVG を等倍表示したときと同じピクセルサイズになる。
-const RASTER_DENSITY = 96;
-const PT_TO_PX = RASTER_DENSITY / 72;
+// ラスタ出力は scale=1 のとき、ブラウザで SVG を等倍表示したときと同じピクセル数
+// (CSS の 1pt = 4/3px) にする。sharp(librsvg) は density=72 で 1pt を 1px として
+// 描画するので、dvisvgm 側で 4/3 倍した SVG を density=72 でラスタライズする。
+// （density を上げる方式は sharp 側の倍率と二重に掛かるため使わない）
+const RASTER_DENSITY = 72;
+const PT_TO_PX = 4 / 3;
 const BBOX_MARGIN_PT = 1;
 
 export class RenderError extends Error {
@@ -64,6 +66,17 @@ const PGF_DRIVER = String.raw`\def\pgfsysdriver{pgfsys-dvisvgm.def}
 
 const USES_TIKZ = /\\(?:tikz|begin\s*\{tikzpicture\})/;
 const HAS_DOCUMENTCLASS = /\\documentclass\b/;
+
+// 和文を含む、または和文用クラス・オプションを指定した入力は upLaTeX で組む。
+// それ以外は latex のほうが起動が軽く、欧文パッケージとの相性問題もないのでそちらを使う。
+// 和文フォントは原ノ味（Adobe-Japan1）なので、ハングル等の日本語外の文字は出ない。
+const CJK_CHARS = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\u3000-\u303f\uff00-\uffef]/u;
+const JA_CLASS = /\\documentclass\s*(?:\[[^\]]*\buplatex\b[^\]]*\])|\\documentclass\s*(?:\[[^\]]*\])?\s*\{(?:u?j(?:article|report|book)|js(?:article|report|book)|bxjs\w*)\}/;
+
+/** @returns {'latex'|'uplatex'} */
+export function selectEngine(tex) {
+  return CJK_CHARS.test(tex) || JA_CLASS.test(tex) ? 'uplatex' : 'latex';
+}
 
 /**
  * ユーザー入力から完全な LaTeX 文書を組み立てる。
@@ -166,16 +179,17 @@ function tailOf(s, maxLines = 40) {
 /**
  * @param {string} tex
  * @param {number} scale
+ * @param {'latex'|'uplatex'} engine
  * @returns {Promise<string>} SVG 文字列
  */
-async function texToSvg(tex, scale) {
+async function texToSvg(tex, scale, engine) {
   const dir = await mkdtemp(join(tmpdir(), 'tex2img-'));
   try {
     const { source, lineOffset } = buildDocument(tex);
     await writeFile(join(dir, 'main.tex'), source, 'utf8');
 
     const latex = await run(
-      'latex',
+      engine,
       ['-no-shell-escape', '-interaction=nonstopmode', '-halt-on-error', '-file-line-error', 'main.tex'],
       { cwd: dir, timeoutMs: LIMITS.compileTimeoutMs, env: TEX_ENV },
     );
@@ -197,6 +211,8 @@ async function texToSvg(tex, scale) {
         // 余白は --scale の後に加算されるため、自前でスケールを掛ける
         `--bbox=${BBOX_MARGIN_PT * scale}pt`,
         '--page=1',
+        // upLaTeX の和文フォント (uprml-h 等) を実フォント (原ノ味) に対応付ける
+        ...(engine === 'uplatex' ? ['--fontmap=+kanjix.map'] : []),
         `--scale=${scale}`,
         '--stdout',
         'main.dvi',
@@ -240,16 +256,19 @@ export function addSvgBackground(svg, color = '#ffffff') {
 /**
  * @param {string} tex
  * @param {{format: 'svg'|'png'|'webp', transparent: boolean, scale: number}} opts
- * @returns {Promise<Buffer>}
+ * @returns {Promise<{body: Buffer, engine: 'latex'|'uplatex'}>}
  */
 export async function render(tex, { format, transparent, scale }) {
-  let svg = await texToSvg(tex, scale);
+  const engine = selectEngine(tex);
+  const raster = format !== 'svg';
+  let svg = await texToSvg(tex, raster ? scale * PT_TO_PX : scale, engine);
   if (!transparent) svg = addSvgBackground(svg);
-  if (format === 'svg') return Buffer.from(svg, 'utf8');
+  if (!raster) return { body: Buffer.from(svg, 'utf8'), engine };
 
+  // density=72 では SVG の 1pt がそのまま 1px になる
   const { width, height } = svgSize(svg);
-  const pxW = Math.ceil(width * PT_TO_PX);
-  const pxH = Math.ceil(height * PT_TO_PX);
+  const pxW = Math.ceil(width);
+  const pxH = Math.ceil(height);
   if (!(pxW > 0 && pxH > 0)) {
     throw new RenderError('Could not determine output size (empty output?)');
   }
@@ -262,7 +281,8 @@ export async function render(tex, { format, transparent, scale }) {
 
   let img = sharp(Buffer.from(svg, 'utf8'), { density: RASTER_DENSITY, limitInputPixels: LIMITS.maxPixels });
   if (!transparent) img = img.flatten({ background: '#ffffff' });
-  return format === 'png'
+  const body = await (format === 'png'
     ? img.png({ compressionLevel: 9 }).toBuffer()
-    : img.webp({ lossless: true }).toBuffer();
+    : img.webp({ lossless: true }).toBuffer());
+  return { body, engine };
 }

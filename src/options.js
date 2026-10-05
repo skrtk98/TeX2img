@@ -65,3 +65,15 @@ export function parseOptions(params) {
 
   return opts;
 }
+
+/**
+ * 既定値と異なるものだけを含む正規化済みクエリ文字列（先頭の ? なし）。
+ * 同じ画像には同じ URL を対応させ、CDN / ブラウザのキャッシュを効かせるため。
+ */
+export function canonicalQuery({ format, transparent, scale }) {
+  const p = new URLSearchParams();
+  if (format !== DEFAULTS.format) p.set('format', format);
+  if (transparent !== DEFAULTS.transparent) p.set('transparent', String(transparent));
+  if (scale !== DEFAULTS.scale) p.set('scale', String(scale));
+  return p.toString();
+}
