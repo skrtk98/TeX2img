@@ -49,8 +49,15 @@ export class RenderError extends Error {
 // \documentclass を含まない入力は standalone の varwidth 環境で包む。
 // varwidth により \[ ... \] や align* などのディスプレイ数式も使え、
 // 出力は内容の自然な幅まで縮む。
-const SNIPPET_PREAMBLE = String.raw`\documentclass[varwidth=\maxdimen]{standalone}
-\usepackage{amsmath}
+// upLaTeX のときは基底クラスを ujarticle にする。article のままだと数式中の和文
+// （$v = 速さ$ 等）が "Not two-byte family" エラーになり、和文の文字サイズも合わない。
+const SNIPPET_CLASS = {
+  latex: String.raw`\documentclass[varwidth=\maxdimen]{standalone}
+`,
+  uplatex: String.raw`\documentclass[varwidth=\maxdimen,class=ujarticle]{standalone}
+`,
+};
+const SNIPPET_PREAMBLE = String.raw`\usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{mathtools}
 \usepackage{bm}
@@ -81,14 +88,15 @@ export function selectEngine(tex) {
 /**
  * ユーザー入力から完全な LaTeX 文書を組み立てる。
  * @param {string} tex
+ * @param {'latex'|'uplatex'} [engine]
  * @returns {{source: string, lineOffset: number}} lineOffset はユーザー入力の 1 行目より前に挿入した行数
  */
-export function buildDocument(tex) {
+export function buildDocument(tex, engine = selectEngine(tex)) {
   if (HAS_DOCUMENTCLASS.test(tex)) {
     return { source: PGF_DRIVER + tex + '\n', lineOffset: countLines(PGF_DRIVER) };
   }
   const head =
-    PGF_DRIVER + SNIPPET_PREAMBLE + (USES_TIKZ.test(tex) ? TIKZ_PREAMBLE : '') + '\\begin{document}\n';
+    PGF_DRIVER + SNIPPET_CLASS[engine] + SNIPPET_PREAMBLE + (USES_TIKZ.test(tex) ? TIKZ_PREAMBLE : '') + '\\begin{document}\n';
   return { source: head + tex + '\n\\end{document}\n', lineOffset: countLines(head) };
 }
 
@@ -185,7 +193,7 @@ function tailOf(s, maxLines = 40) {
 async function texToSvg(tex, scale, engine) {
   const dir = await mkdtemp(join(tmpdir(), 'tex2img-'));
   try {
-    const { source, lineOffset } = buildDocument(tex);
+    const { source, lineOffset } = buildDocument(tex, engine);
     await writeFile(join(dir, 'main.tex'), source, 'utf8');
 
     const latex = await run(

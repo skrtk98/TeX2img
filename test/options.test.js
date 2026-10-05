@@ -31,6 +31,7 @@ test('snippet is wrapped in standalone, full document is kept', () => {
   assert.equal(snip.source.split('\n')[snip.lineOffset], '$x$');
 
   assert.match(buildDocument('\\tikz \\draw (0,0) -- (1,1);').source, /\\usepackage\{tikz\}/);
+  assert.match(buildDocument('$速さ$').source, /class=ujarticle\]\{standalone\}/);
 
   const full = buildDocument('\\documentclass{article}\n\\begin{document}x\\end{document}');
   assert.doesNotMatch(full.source, /standalone/);

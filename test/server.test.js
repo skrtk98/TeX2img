@@ -205,6 +205,11 @@ test('Japanese is rendered with upLaTeX and real glyphs', jaOpts, async () => {
   assert.equal(en.headers.get('x-tex-engine'), 'latex');
 });
 
+test('Japanese directly in math mode and TikZ nodes', jaOpts, async () => {
+  const res = await send('?format=png', '$\\alpha + 日本$ \\[ v = \\frac{距離}{時間} \\] \\tikz \\node {ノード};');
+  assert.equal(res.status, 200, await res.clone().text());
+});
+
 test('full upLaTeX document with jsarticle', jaOpts, async () => {
   const doc = '\\documentclass[uplatex]{jsarticle}\n\\pagestyle{empty}\n\\begin{document}\nこんにちは、\\LaTeX\n\\end{document}';
   const res = await send('?format=png', doc);

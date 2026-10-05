@@ -172,6 +172,8 @@
     <h2>REST API</h2>
     <p>TeX ソースをリクエストボディに入れて <code>QUERY</code> メソッドで送信します（<code>POST</code> でも可）。
       レスポンスの <code>Content-Location</code> ヘッダに、同じ画像を <code>GET</code> で取得できる埋め込み用 URL が入ります。</p>
+    <p class="hint warn" id="methodNote" hidden>このデプロイ環境では、サーバーより手前のプロキシが <code>QUERY</code> メソッドを拒否するため
+      <code>POST</code> で送信しています（API の挙動は同じです）。</p>
     <pre class="code" id="curl"></pre>
     <div class="actions"><button class="secondary" id="copyCurl" type="button">コマンドをコピー</button></div>
     <table style="margin-top:12px">
@@ -192,7 +194,7 @@
     tex: $('tex'), format: $('format'), scale: $('scale'), transparent: $('transparent'),
     render: $('render'), preview: $('preview'), actions: $('actions'), download: $('download'),
     copy: $('copy'), meta: $('meta'), error: $('error'), logBox: $('logBox'), log: $('log'),
-    curl: $('curl'), copyCurl: $('copyCurl'),
+    curl: $('curl'), copyCurl: $('copyCurl'), methodNote: $('methodNote'),
     embed: $('embed'), embedNone: $('embedNone'), embedRows: $('embedRows'), embedLen: $('embedLen'),
     embedUrl: $('embedUrl'), embedMd: $('embedMd'), embedHtml: $('embedHtml'),
   };
@@ -200,6 +202,37 @@
   let objectUrl = null;
   let lastBlob = null;
   let inflight = null;
+  // QUERY は IETF ドラフトのため、経路上のプロキシ（PaaS のエッジ等）が拒否することがある。
+  // その場合は同じ挙動の POST に切り替える。
+  let method = 'QUERY';
+
+  // このサーバー自身のエラーは必ず JSON で返る。JSON 以外の 405/501 は手前のプロキシによる拒否
+  function rejectedBeforeServer(res) {
+    return (res.status === 405 || res.status === 501) &&
+      !(res.headers.get('Content-Type') || '').includes('application/json');
+  }
+  function useMethod(m) {
+    method = m;
+    els.methodNote.hidden = m === 'QUERY';
+    updateCurl();
+  }
+  // 起動時に QUERY が通るか確認する。不正な format はコンパイル前に 400 (JSON) で返るので軽い
+  async function probeQuery() {
+    try {
+      const res = await fetch('/render?format=-', { method: 'QUERY', body: 'x' });
+      if (rejectedBeforeServer(res)) useMethod('POST');
+    } catch {}
+  }
+  async function send(tex, signal) {
+    const init = { headers: { 'Content-Type': 'text/plain; charset=utf-8' }, body: tex, signal };
+    const url = '/render?' + params();
+    const res = await fetch(url, { ...init, method });
+    if (method === 'QUERY' && rejectedBeforeServer(res)) {
+      useMethod('POST');
+      return fetch(url, { ...init, method });
+    }
+    return res;
+  }
 
   function load() {
     try {
@@ -233,7 +266,7 @@
   function updateCurl() {
     const url = new URL('/render?' + params(), location.href);
     els.curl.textContent =
-      `curl -X QUERY ${shellQuote(url.href)} \\\n` +
+      `curl -X ${method} ${shellQuote(url.href)} \\\n` +
       `  -H 'Content-Type: text/plain; charset=utf-8' \\\n` +
       `  --data-binary ${shellQuote(els.tex.value)} \\\n` +
       `  -o tex.${els.format.value}`;
@@ -279,12 +312,7 @@
     els.render.textContent = '変換中…';
     const started = performance.now();
     try {
-      const res = await fetch('/render?' + params(), {
-        method: 'QUERY',
-        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-        body: tex,
-        signal: ctrl.signal,
-      });
+      const res = await send(tex, ctrl.signal);
       if (!res.ok) {
         let body = {};
         try { body = await res.json(); } catch {}
@@ -359,6 +387,7 @@
   }
 
   load();
+  probeQuery();
   updateCurl();
   for (const el of [els.tex, els.format, els.scale, els.transparent]) {
     el.addEventListener('input', updateCurl);

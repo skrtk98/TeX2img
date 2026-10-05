@@ -35,6 +35,10 @@ TeX ──latex / uplatex──▶ DVI ──dvisvgm --no-fonts──▶ SVG ─
 
 リクエストボディ: TeX ソース（UTF-8 テキスト、最大 64KB）。`Content-Type` は問わないが `text/plain; charset=utf-8` 推奨。
 
+> **Render では `QUERY` が使えない（2026-10 時点で確認）。** Render のエッジが `QUERY` をアプリに届く前に
+> `405`（本文なし）で拒否する。Render 上では同じ挙動の **`POST` を使うこと**。Web UI は起動時に `QUERY` が通るかを確かめ、
+> 通らなければ自動で `POST` に切り替える。`QUERY` をそのまま通す環境（自前の VPS 等）ではそのまま `QUERY` が使える。
+
 ```sh
 # SVG（既定）
 curl -X QUERY 'https://<your-app>.onrender.com/render' \
@@ -176,7 +180,7 @@ docker run --rm -p 10000:10000 tex2img
    ```sh
    ./scripts/smoke.sh https://<service-name>.onrender.com
    ```
-   QUERY が手前のプロキシを通るか、日本語のグリフが実際に描画されるかまで確認する。
+   機能は POST で確認し、`QUERY` が手前のプロキシを通るかは最後に別途判定する（Render では FAIL になる。上記参照）。
 
 `render.yaml` は Docker ランタイム・Free プラン・`/healthz` ヘルスチェックで定義している。
 Docker ビルド時に和文フォントの自己診断を行い、和文が描画されない状態ならビルドを失敗させる。
@@ -216,7 +220,9 @@ Docker ビルド時に和文フォントの自己診断を行い、和文が描�
 ## 既知の制約
 
 - **`QUERY` メソッドは IETF のドラフト段階**。Node.js 22 / curl / ブラウザの `fetch` は扱えるが、
-  途中のプロキシ・CDN・WAF・HTTP クライアントライブラリが未知メソッドとして拒否する可能性がある。そのため `POST` を同じ挙動で受け付けている。
+  途中のプロキシ・CDN・WAF・HTTP クライアントライブラリが未知メソッドとして拒否することがある。**Render のエッジは実際に拒否する**
+  （`405`、`Content-Type` なし。このアプリのエラーは常に JSON なので区別できる）。そのため `POST` を同じ挙動で受け付けている。
+  `scripts/smoke.sh` の最後の項目でデプロイ先が `QUERY` を通すか判定できる。
 - **GET URL の長さ**: サーバーは 64KB まで受け付けるが、実際の上限は経路で決まる（多くの CDN・プロキシは 8〜16KB 程度、
   GitHub の画像プロキシ等はさらに短いことがある）。埋め込みは数式 1 つ〜数個程度の規模を想定。長い文書は QUERY を使う
 - **GET 埋め込みは誰でも計算資源を消費させられる**（人気ページに重い URL を貼る等）。結果はキャッシュされるが、
