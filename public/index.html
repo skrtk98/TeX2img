@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TeX2img</title>
+<meta name="description" content="TeX ソースを SVG / PNG / WEBP 画像に変換">
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #5d6676;
+    --border: #d9dde4; --accent: #2457d6; --accent-text: #fff;
+    --error-bg: #fdecec; --error-text: #9b1c1c; --code-bg: #f0f2f5;
+    --check-a: #ffffff; --check-b: #e9ebef;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c; --panel: #1c2027; --text: #e6e9ef; --muted: #9aa3b2;
+      --border: #303643; --accent: #6b93ff; --accent-text: #0d1117;
+      --error-bg: #3a1d1d; --error-text: #ffb4b4; --code-bg: #252a33;
+      --check-a: #2a2f38; --check-b: #232730;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+  }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  .lead { color: var(--muted); margin: 0 0 20px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; min-width: 0;
+  }
+  label { font-weight: 600; font-size: .9rem; }
+  textarea {
+    width: 100%; min-height: 260px; resize: vertical; margin-top: 6px;
+    font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: var(--code-bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; padding: 10px;
+  }
+  textarea:focus, select:focus, input:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: end; margin-top: 12px; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field.inline { flex-direction: row; align-items: center; gap: 6px; }
+  select, input[type=number] {
+    font: inherit; padding: 6px 8px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--panel); color: var(--text);
+  }
+  input[type=number] { width: 90px; }
+  button, .button {
+    font: inherit; font-weight: 600; cursor: pointer; text-decoration: none;
+    padding: 8px 16px; border-radius: 8px; border: 1px solid var(--accent);
+    background: var(--accent); color: var(--accent-text); display: inline-block;
+  }
+  button.secondary, .button.secondary { background: transparent; color: var(--accent); }
+  button:disabled { opacity: .6; cursor: progress; }
+  .hint { color: var(--muted); font-size: .85rem; margin: 8px 0 0; }
+  .preview {
+    margin-top: 6px; min-height: 260px; border-radius: 8px; border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center; overflow: auto; padding: 16px;
+    background-color: var(--check-a);
+    background-image:
+      linear-gradient(45deg, var(--check-b) 25%, transparent 25%, transparent 75%, var(--check-b) 75%),
+      linear-gradient(45deg, var(--check-b) 25%, transparent 25%, transparent 75%, var(--check-b) 75%);
+    background-size: 16px 16px; background-position: 0 0, 8px 8px;
+  }
+  .preview img { max-width: 100%; height: auto; }
+  .placeholder { color: var(--muted); }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
+  .meta { color: var(--muted); font-size: .85rem; }
+  .error {
+    margin-top: 12px; padding: 10px 12px; border-radius: 8px;
+    background: var(--error-bg); color: var(--error-text); white-space: pre-wrap;
+    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  details { margin-top: 8px; }
+  details pre { max-height: 240px; overflow: auto; font-size: 12px; }
+  section.api { margin-top: 16px; }
+  section.api h2 { font-size: 1.1rem; margin: 0 0 8px; }
+  pre.code {
+    background: var(--code-bg); border-radius: 8px; padding: 10px 12px; margin: 6px 0 0;
+    overflow-x: auto; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>TeX2img</h1>
+  <p class="lead">TeX ソースを SVG / PNG / WEBP 画像に変換します。</p>
+
+  <div class="grid">
+    <div class="panel">
+      <label for="tex">TeX ソース</label>
+      <textarea id="tex" spellcheck="false" autocomplete="off">\[
+  \int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}
+\]</textarea>
+      <div class="controls">
+        <div class="field">
+          <label for="format">フォーマット</label>
+          <select id="format">
+            <option value="svg" selected>SVG</option>
+            <option value="png">PNG</option>
+            <option value="webp">WEBP</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="scale">スケール</label>
+          <input id="scale" type="number" min="0.1" max="10" step="0.5" value="1">
+        </div>
+        <div class="field inline">
+          <input id="transparent" type="checkbox" checked>
+          <label for="transparent">背景を透過</label>
+        </div>
+        <button id="render" type="button">変換</button>
+      </div>
+      <p class="hint">Ctrl / ⌘ + Enter でも変換できます。<code>\documentclass</code> を含まない入力は
+        <code>standalone</code> クラス（amsmath, amssymb, mathtools, bm, xcolor 読み込み済み）で包みます。数式は
+        <code>$…$</code> や <code>\[…\]</code> で囲んでください。</p>
+    </div>
+
+    <div class="panel">
+      <label>プレビュー</label>
+      <div class="preview" id="preview"><span class="placeholder">ここに画像が表示されます</span></div>
+      <div class="actions" id="actions" hidden>
+        <a class="button" id="download" download>ダウンロード</a>
+        <button class="secondary" id="copy" type="button">画像をコピー</button>
+        <span class="meta" id="meta"></span>
+      </div>
+      <div class="error" id="error" hidden></div>
+      <details id="logBox" hidden><summary>LaTeX ログ</summary><pre class="code" id="log"></pre></details>
+    </div>
+  </div>
+
+  <section class="panel api">
+    <h2>REST API</h2>
+    <p>TeX ソースをリクエストボディに入れて <code>QUERY</code> メソッドで送信します（<code>POST</code> でも可）。</p>
+    <pre class="code" id="curl"></pre>
+    <div class="actions"><button class="secondary" id="copyCurl" type="button">コマンドをコピー</button></div>
+    <table style="margin-top:12px">
+      <thead><tr><th>パラメータ</th><th>値</th><th>既定値</th></tr></thead>
+      <tbody>
+        <tr><td><code>format</code></td><td><code>svg</code> / <code>png</code> / <code>webp</code></td><td><code>svg</code></td></tr>
+        <tr><td><code>transparent</code></td><td><code>true</code> / <code>false</code>（背景透過の有無）</td><td><code>true</code></td></tr>
+        <tr><td><code>scale</code></td><td>0.1 – 10 の数値</td><td><code>1</code></td></tr>
+      </tbody>
+    </table>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const els = {
+    tex: $('tex'), format: $('format'), scale: $('scale'), transparent: $('transparent'),
+    render: $('render'), preview: $('preview'), actions: $('actions'), download: $('download'),
+    copy: $('copy'), meta: $('meta'), error: $('error'), logBox: $('logBox'), log: $('log'),
+    curl: $('curl'), copyCurl: $('copyCurl'),
+  };
+  const STORAGE_KEY = 'tex2img:v1';
+  let objectUrl = null;
+  let lastBlob = null;
+  let inflight = null;
+
+  function load() {
+    try {
+      const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+      if (!s) return;
+      if (typeof s.tex === 'string') els.tex.value = s.tex;
+      if (['svg', 'png', 'webp'].includes(s.format)) els.format.value = s.format;
+      if (s.scale) els.scale.value = s.scale;
+      if (typeof s.transparent === 'boolean') els.transparent.checked = s.transparent;
+    } catch {}
+  }
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        tex: els.tex.value, format: els.format.value,
+        scale: els.scale.value, transparent: els.transparent.checked,
+      }));
+    } catch {}
+  }
+
+  function params() {
+    const p = new URLSearchParams({ format: els.format.value });
+    if (!els.transparent.checked) p.set('transparent', 'false');
+    const scale = els.scale.value.trim();
+    if (scale && Number(scale) !== 1) p.set('scale', scale);
+    return p;
+  }
+
+  function shellQuote(s) { return "'" + s.replace(/'/g, `'\\''`) + "'"; }
+
+  function updateCurl() {
+    const url = new URL('/render?' + params(), location.href);
+    els.curl.textContent =
+      `curl -X QUERY ${shellQuote(url.href)} \\\n` +
+      `  -H 'Content-Type: text/plain; charset=utf-8' \\\n` +
+      `  --data-binary ${shellQuote(els.tex.value)} \\\n` +
+      `  -o tex.${els.format.value}`;
+  }
+
+  function showError(message, log) {
+    els.error.textContent = message;
+    els.error.hidden = false;
+    els.log.textContent = log || '';
+    els.logBox.hidden = !log;
+  }
+  function clearError() {
+    els.error.hidden = true;
+    els.logBox.hidden = true;
+  }
+
+  async function render() {
+    const tex = els.tex.value;
+    if (!tex.trim()) { showError('TeX ソースを入力してください'); return; }
+    save();
+    inflight?.abort();
+    const ctrl = new AbortController();
+    inflight = ctrl;
+    els.render.disabled = true;
+    els.render.textContent = '変換中…';
+    const started = performance.now();
+    try {
+      const res = await fetch('/render?' + params(), {
+        method: 'QUERY',
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        body: tex,
+        signal: ctrl.signal,
+      });
+      if (!res.ok) {
+        let body = {};
+        try { body = await res.json(); } catch {}
+        const where = body.line ? `（${body.line} 行目）` : '';
+        showError(`エラー ${res.status}${where}: ${body.error || res.statusText}`, body.log);
+        return;
+      }
+      const blob = await res.blob();
+      clearError();
+      lastBlob = blob;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      objectUrl = URL.createObjectURL(blob);
+      const img = new Image();
+      img.alt = 'レンダリング結果';
+      img.src = objectUrl;
+      await img.decode().catch(() => {});
+      els.preview.replaceChildren(img);
+      const fmt = els.format.value;
+      els.download.href = objectUrl;
+      els.download.download = `tex.${fmt}`;
+      const ms = Math.round(performance.now() - started);
+      const cache = res.headers.get('X-Cache') === 'HIT' ? '・キャッシュ' : '';
+      els.meta.textContent =
+        `${fmt.toUpperCase()}・${img.naturalWidth}×${img.naturalHeight}・${(blob.size / 1024).toFixed(1)} KB・${ms} ms${cache}`;
+      els.actions.hidden = false;
+    } catch (e) {
+      if (e.name !== 'AbortError') showError('通信エラー: ' + e.message);
+    } finally {
+      if (inflight === ctrl) {
+        els.render.disabled = false;
+        els.render.textContent = '変換';
+        inflight = null;
+      }
+    }
+  }
+
+  async function copyText(text, button) {
+    const label = button.textContent;
+    try {
+      await navigator.clipboard.writeText(text);
+      button.textContent = 'コピーしました';
+    } catch {
+      button.textContent = 'コピーできませんでした';
+    }
+    setTimeout(() => { button.textContent = label; }, 1500);
+  }
+
+  async function copyImage() {
+    if (!lastBlob) return;
+    const label = els.copy.textContent;
+    try {
+      let blob = lastBlob;
+      // クリップボードが PNG しか受け付けないブラウザが多いので変換する
+      if (blob.type !== 'image/png') {
+        const bmp = await createImageBitmap(await (async () => {
+          const img = els.preview.querySelector('img');
+          await img.decode();
+          return img;
+        })());
+        const canvas = document.createElement('canvas');
+        canvas.width = bmp.width; canvas.height = bmp.height;
+        canvas.getContext('2d').drawImage(bmp, 0, 0);
+        blob = await new Promise((r) => canvas.toBlob(r, 'image/png'));
+      }
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      els.copy.textContent = 'コピーしました';
+    } catch {
+      els.copy.textContent = 'コピーできませんでした';
+    }
+    setTimeout(() => { els.copy.textContent = label; }, 1500);
+  }
+
+  load();
+  updateCurl();
+  for (const el of [els.tex, els.format, els.scale, els.transparent]) {
+    el.addEventListener('input', updateCurl);
+    el.addEventListener('change', updateCurl);
+  }
+  els.render.addEventListener('click', render);
+  els.tex.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); render(); }
+  });
+  els.copy.addEventListener('click', copyImage);
+  els.copyCurl.addEventListener('click', () => copyText(els.curl.textContent, els.copyCurl));
+})();
+</script>
+</body>
+</html>

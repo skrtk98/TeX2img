@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: tex2img
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      # 512MB RAM の Free プランでは 2 並列が目安。上位プランなら増やす
+      - key: MAX_CONCURRENCY
+        value: "2"
+      - key: TEX_TIMEOUT_MS
+        value: "15000"

@@ -1,0 +1,18 @@
+{
+  "name": "tex2img",
+  "version": "0.1.0",
+  "description": "Convert TeX source to SVG / PNG / WEBP via a REST API (HTTP QUERY method) and a Web UI",
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "sharp": "^0.35.5"
+  },
+  "license": "MIT"
+}
