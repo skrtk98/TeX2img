@@ -60,7 +60,7 @@ const embedUrl = new URL(res.headers.get('Content-Location'), res.url); // 埋�
 ```
 
 成功レスポンスの **`Content-Location`** ヘッダに、同じ画像を `GET` で取得できる URL（下記の `/render/{encoded}`）が入る。
-これは QUERY 仕様（[draft-ietf-httpbis-safe-method-w-body](https://datatracker.ietf.org/doc/draft-ietf-httpbis-safe-method-w-body/)）が想定している使い方で、
+これは QUERY 仕様（[RFC 10008](https://www.rfc-editor.org/info/rfc10008/)）が想定している使い方で、
 「長いソースは QUERY で送り、結果を参照するときは GET」という分担になる。URL が 8KB を超える場合はヘッダを付けない。
 
 ### `GET /render/{encoded}` — 埋め込み用
@@ -142,6 +142,7 @@ def embed_url(tex: str, params: str = "") -> str:
 - `ETag`: 入力 + パラメータの SHA-256。同一入力なら同一画像（QUERY と GET で共通）
 - `X-Cache`: `HIT` / `MISS`（サーバー内 LRU キャッシュ）
 - `X-TeX-Engine`: `latex` / `uplatex`
+- `Accept-Query: text/plain`（`/render` のみ。RFC 10008 の QUERY 対応の広告）
 - `Cache-Control: public, max-age=604800, immutable`
 - CORS: `Access-Control-Allow-Origin: *`（`CORS_ORIGIN` で変更可）。ブラウザから別オリジンで `QUERY` を送るとプリフライト（`OPTIONS`）が飛ぶが、対応済み
 
@@ -219,9 +220,9 @@ Docker ビルド時に和文フォントの自己診断を行い、和文が描�
 
 ## 既知の制約
 
-- **`QUERY` メソッドは IETF のドラフト段階**。Node.js 22 / curl / ブラウザの `fetch` は扱えるが、
-  途中のプロキシ・CDN・WAF・HTTP クライアントライブラリが未知メソッドとして拒否することがある。**Render のエッジは実際に拒否する**
-  （`405`、`Content-Type` なし。このアプリのエラーは常に JSON なので区別できる）。そのため `POST` を同じ挙動で受け付けている。
+- **`QUERY` メソッドは 2026 年 6 月に [RFC 10008](https://www.rfc-editor.org/info/rfc10008/) として標準化されたばかり**で、インフラ側の対応が追いついていない。
+  Node.js 22 / curl / ブラウザの `fetch` は扱えるが、途中のプロキシ・CDN・WAF が拒否することがある。**Render の前段（Cloudflare 経由）は実際に拒否する**
+  （`405`、本文なし、`server: cloudflare`。このアプリのエラーは常に JSON なので区別できる）。そのため `POST` を同じ挙動で受け付けている。
   `scripts/smoke.sh` の最後の項目でデプロイ先が `QUERY` を通すか判定できる。
 - **GET URL の長さ**: サーバーは 64KB まで受け付けるが、実際の上限は経路で決まる（多くの CDN・プロキシは 8〜16KB 程度、
   GitHub の画像プロキシ等はさらに短いことがある）。埋め込みは数式 1 つ〜数個程度の規模を想定。長い文書は QUERY を使う

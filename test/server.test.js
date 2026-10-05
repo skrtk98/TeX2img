@@ -55,6 +55,7 @@ test('CORS preflight allows QUERY', async () => {
   const res = await fetch(base + '/render', { method: 'OPTIONS' });
   assert.equal(res.status, 204);
   assert.match(res.headers.get('access-control-allow-methods'), /QUERY/);
+  assert.equal(res.headers.get('accept-query'), 'text/plain');
 });
 
 test('empty body and invalid params are 400', async () => {

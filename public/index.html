@@ -202,7 +202,7 @@
   let objectUrl = null;
   let lastBlob = null;
   let inflight = null;
-  // QUERY は IETF ドラフトのため、経路上のプロキシ（PaaS のエッジ等）が拒否することがある。
+  // QUERY は 2026 年に標準化されたばかり (RFC 10008) で、経路上のプロキシ（PaaS のエッジ等）が拒否することがある。
   // その場合は同じ挙動の POST に切り替える。
   let method = 'QUERY';
 

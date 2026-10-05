@@ -128,7 +128,7 @@ function corsHeaders() {
     'Access-Control-Allow-Origin': CONFIG.corsOrigin,
     'Access-Control-Allow-Methods': [...URL_METHODS, ...BODY_METHODS, 'OPTIONS'].join(', '),
     'Access-Control-Allow-Headers': 'Content-Type, If-None-Match',
-    'Access-Control-Expose-Headers': 'ETag, X-Cache, X-TeX-Engine, Content-Location, Content-Disposition',
+    'Access-Control-Expose-Headers': 'Accept-Query, ETag, X-Cache, X-TeX-Engine, Content-Location, Content-Disposition',
     'Access-Control-Max-Age': '86400',
   };
 }
@@ -223,7 +223,7 @@ async function handleRender(req, res, url, token) {
     Vary: 'Origin',
   };
   // 同一入力なら同一出力。QUERY の結果と同じ表現を GET で取得できる URL を返す
-  // （draft-ietf-httpbis-safe-method-w-body の Content-Location）。埋め込みにはこれを使う
+  // （RFC 10008 の Content-Location）。埋め込みにはこれを使う
   const query = canonicalQuery(opts);
   const embedPath = `${RENDER_PATH}/${encodeSource(tex)}${query ? `?${query}` : ''}`;
   if (embedPath.length <= CONFIG.maxEmbedUrlBytes) headers['Content-Location'] = embedPath;
@@ -272,6 +272,8 @@ async function route(req, res) {
   if (pathname === RENDER_PATH || pathname.startsWith(`${RENDER_PATH}/`)) {
     const token = pathname === RENDER_PATH ? undefined : pathname.slice(RENDER_PATH.length + 1);
     const allowed = token === undefined ? [...URL_METHODS, ...BODY_METHODS] : URL_METHODS;
+    // RFC 10008 §3: QUERY を受け付けること、および受け付けるクエリの形式を広告する
+    if (token === undefined) res.setHeader('Accept-Query', 'text/plain');
     if (req.method === 'OPTIONS') {
       res.writeHead(204, corsHeaders());
       res.end();
